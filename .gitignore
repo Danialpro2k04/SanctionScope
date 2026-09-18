@@ -1,0 +1,19 @@
+# Virtual Environment
+venv/
+env/
+
+# Python Cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Databases and Local Data
+data/
+qdrant_data/
+*.sqlite3
+*.db
+
+# Environment Variables
+.env
+.DS_Store
