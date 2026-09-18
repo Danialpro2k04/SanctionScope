@@ -49,7 +49,7 @@ sanctionscope/
 **1. Clone the repository and navigate into it**
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/SanctionScope.git
+git clone https://github.com/Danialpro2k04/SanctionScope.git
 cd SanctionScope
 ```
 
