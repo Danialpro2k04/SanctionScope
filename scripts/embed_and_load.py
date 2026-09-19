@@ -2,6 +2,7 @@ import json
 from qdrant_client import QdrantClient
 from qdrant_client.models import VectorParams, Distance, PointStruct
 from sentence_transformers import SentenceTransformer
+from app.normalization import normalize_for_semantic
 
 # Must match app/matching/semantic.py exactly: same collection name and same model,
 # otherwise query vectors are not comparable to the stored vectors.
@@ -49,7 +50,10 @@ def load_to_qdrant(json_file_path):
     point_id = 0
     for i in range(0, total, batch_size):
         batch = texts_to_embed[i : i + batch_size]
-        vectors = model.encode([item["text"] for item in batch]).tolist()
+        # Embed the suffix-stripped version so vectors compare substantive name
+        # content rather than shared legal-form boilerplate (LLC, Ltd, JSC...).
+        normalized_texts = [normalize_for_semantic(item["text"]) for item in batch]
+        vectors = model.encode(normalized_texts).tolist()
 
         points = []
         for item, vec in zip(batch, vectors):
@@ -59,7 +63,7 @@ def load_to_qdrant(json_file_path):
                     vector=vec,
                     payload={
                         "entity_id": item["entity_id"],
-                        "text": item["text"],
+                        "text": item["text"],  # original text, for display in results
                         "text_type": item["text_type"],
                     },
                 )

@@ -1,12 +1,18 @@
 from qdrant_client import QdrantClient
 from sentence_transformers import SentenceTransformer
+from app.normalization import normalize_for_semantic
 
 # Load globally to avoid reload on every request
 q_client = QdrantClient(host="localhost", port=6333)
 encoder = SentenceTransformer("intfloat/multilingual-e5-small")
 
 def match_semantic(query: str) -> list:
-    vector = encoder.encode(query).tolist()
+    # Strip legal-form boilerplate (LLC, Ltd, JSC, etc.) so short generic names
+    # don't falsely cluster together based on shared corporate suffixes rather
+    # than actual name content. Must match the normalization applied when the
+    # entity texts were embedded (see scripts/embed_and_load.py).
+    query_norm = normalize_for_semantic(query)
+    vector = encoder.encode(query_norm).tolist()
     
     hits = q_client.search(
         collection_name="sanctions_entities",
