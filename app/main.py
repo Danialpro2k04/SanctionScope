@@ -47,12 +47,12 @@ def screen_entity(req: ScreenRequest):
         candidates[eid] = {"exact": True, "jw": 1.0, "lev": 1.0, "sem": 0.0, "on": m_on, "alias": m_alias}
         
     # Combine FUZZY
-    for eid, score, m_text, m_on, m_alias in fuzzy_res:
+    for eid, score, jw_score, lev_score, m_text, m_on, m_alias in fuzzy_res:
         if eid not in candidates:
-            candidates[eid] = {"exact": False, "jw": score, "lev": score, "sem": 0.0, "on": m_on, "alias": m_alias}
+            candidates[eid] = {"exact": False, "jw": jw_score, "lev": lev_score, "sem": 0.0, "on": m_on, "alias": m_alias}
         else:
-            candidates[eid]["jw"] = score
-            candidates[eid]["lev"] = score
+            candidates[eid]["jw"] = jw_score
+            candidates[eid]["lev"] = lev_score
             
     # Combine SEMANTIC
     for eid, score, m_text, m_on, m_alias in semantic_res:

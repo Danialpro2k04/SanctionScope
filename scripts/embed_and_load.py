@@ -3,49 +3,74 @@ from qdrant_client import QdrantClient
 from qdrant_client.models import VectorParams, Distance, PointStruct
 from sentence_transformers import SentenceTransformer
 
-# 1. Initialize client with an extended timeout (60 seconds)
+# Must match app/matching/semantic.py exactly: same collection name and same model,
+# otherwise query vectors are not comparable to the stored vectors.
 client = QdrantClient("http://localhost:6333", timeout=60.0)
-model = SentenceTransformer("all-MiniLM-L6-v2")
-collection_name = "sanctions"
+model = SentenceTransformer("intfloat/multilingual-e5-small")
+collection_name = "sanctions_entities"
+
 
 def load_to_qdrant(json_file_path):
-    with open(json_file_path, "r") as f:
+    with open(json_file_path, "r", encoding="utf-8") as f:
         entities = json.load(f)
 
-    # Use recreate_collection for qdrant-client 1.6.4 compatibility
     client.recreate_collection(
         collection_name=collection_name,
         vectors_config=VectorParams(size=384, distance=Distance.COSINE),
     )
 
-    print("Embedding points...")
-    points = []
-    for idx, ent in enumerate(entities):
-        vec = model.encode(ent.get("canonical_name", "")).tolist()
-        points.append(
-            PointStruct(
-                id=idx,
-                vector=vec,
-                payload={
-                    "id": ent.get("id", str(idx)),  # Safely falls back to the index
-                    "canonical_name": ent.get("canonical_name", ""),
-                    "aliases": ent.get("aliases", []),
-                    "sanctions": ent.get("sanctions", []),
-                },
-            )
-        )
+    print("Embedding canonical names and aliases...")
+    # Embed the canonical name AND every alias as separate points, so a query in
+    # any script/language/translation can match directly against the closest
+    # known text for that entity. semantic.py aggregates back to one best score
+    # per entity_id, so having multiple points per entity is expected.
+    texts_to_embed = []
+    for ent in entities:
+        entity_id = ent["entity_id"]
+        canonical = ent.get("canonical_name", "")
+        if canonical:
+            texts_to_embed.append({
+                "entity_id": entity_id,
+                "text": canonical,
+                "text_type": "canonical_name",
+            })
+        for alias in ent.get("aliases", []):
+            if alias:
+                texts_to_embed.append({
+                    "entity_id": entity_id,
+                    "text": alias,
+                    "text_type": "alias",
+                })
 
-    # 2. Upload points in smaller batches of 500
+    print(f"Total texts to embed (canonical + aliases): {len(texts_to_embed)}")
+
     batch_size = 500
-    total_points = len(points)
-    print(f"Uploading {total_points} points in batches of {batch_size}...")
+    total = len(texts_to_embed)
+    point_id = 0
+    for i in range(0, total, batch_size):
+        batch = texts_to_embed[i : i + batch_size]
+        vectors = model.encode([item["text"] for item in batch]).tolist()
 
-    for i in range(0, total_points, batch_size):
-        batch = points[i : i + batch_size]
-        client.upsert(collection_name=collection_name, points=batch)
-        print(f"Uploaded {min(i + batch_size, total_points)} / {total_points} points")
+        points = []
+        for item, vec in zip(batch, vectors):
+            points.append(
+                PointStruct(
+                    id=point_id,
+                    vector=vec,
+                    payload={
+                        "entity_id": item["entity_id"],
+                        "text": item["text"],
+                        "text_type": item["text_type"],
+                    },
+                )
+            )
+            point_id += 1
+
+        client.upsert(collection_name=collection_name, points=points)
+        print(f"Uploaded {min(i + batch_size, total)} / {total} texts")
 
     print("Successfully loaded all vectors into Qdrant!")
+
 
 if __name__ == "__main__":
     load_to_qdrant("data/processed_entities.json")
